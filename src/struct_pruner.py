@@ -4,6 +4,7 @@ from typing import Iterable, Dict, List, Any, Optional, Union
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+from tqdm import tqdm
 
 from src import dist_utils
 from src.fast_obc_struct import FastOBCStruct
@@ -28,6 +29,7 @@ class ZipLMPruner:
         cpu_offload_modules: bool = False,
         cpu_offload_activations: bool = False,
         verbose: bool = False,
+        sparse_config: dict = None
     ) -> None:
         self.model = model
         self.data_loader = data_loader
@@ -42,6 +44,7 @@ class ZipLMPruner:
         self.verbose = verbose
         self.mlp_prune_name = mlp_prune_name
         self.attn_prune_name = attn_prune_name
+        self.sparse_config = sparse_config
 
     @torch.no_grad()
     def struct_prune(self, cols_removed_attention: List[int], cols_removed_mlp: List[int]):
@@ -52,6 +55,7 @@ class ZipLMPruner:
         """
         assert len(cols_removed_attention) == len(cols_removed_mlp)
         headsize = self.model.config.hidden_size // self.model.config.num_attention_heads
+        print(headsize)
         #mlp_step_size = 32 # why?
         assert all([num_removed % headsize == 0 for num_removed in cols_removed_attention]), "Number of rows removed from attention layer should be multiple of headsize." 
         #assert all([num_removed % mlp_step_size == 0 for num_removed in cols_removed_mlp]), "Number of rows removed from mlp layer should be multiple of mlp_step_size (32)."
@@ -70,7 +74,7 @@ class ZipLMPruner:
         # Input preparation #
         blocks[0] = InputCollector(blocks[0], cpu_offload=self.cpu_offload_activations)
         # TODO make namedtuple
-        for inp_args, inp_kwargs in self.data_loader:
+        for inp_args, inp_kwargs in tqdm(self.data_loader):
             try:
                 self.model(*to(inp_args, device=device), **to(inp_kwargs, device=device))
             except ForwardInterrupt:
@@ -110,10 +114,32 @@ class ZipLMPruner:
             for handle_name, handle in handles.items():
                 if self.verbose:
                     dist_utils.print_on_main(f"Pruning {handle_name}")
-                sparse_weights = handle.prune_struct(cols_removed_attention, cols_removed_mlp, headsize)
+                
+                
+                cols_removed_attention_to_prune = None
+                cols_removed_mlp_to_prune = None
+                # For gradual pruning
+                if self.sparse_config is not None:
+                    old_level = int(self.sparse_config[handle_name])
+                    attn_removed_cols = cols_removed_attention[old_level]
+                    mlp_removed_cols = cols_removed_mlp[old_level]
+                    cols_removed_attention_to_prune = [cols - attn_removed_cols for cols in cols_removed_attention]
+                    cols_removed_mlp_to_prune = [cols - mlp_removed_cols for cols in cols_removed_mlp]
+                    cols_removed_attention_to_prune = cols_removed_attention_to_prune[old_level:]
+                    cols_removed_mlp_to_prune = cols_removed_mlp_to_prune[old_level:]
+
+                else:
+                    cols_removed_attention_to_prune = cols_removed_attention
+                    cols_removed_mlp_to_prune = cols_removed_mlp
+                
+                sparse_weights = handle.prune_struct(cols_removed_attention_to_prune, cols_removed_mlp_to_prune, headsize)
                 
                 if dist_utils.is_main():
                     for level, sparse_weight in enumerate(sparse_weights):
+                        # For gradual pruning, the first one is the original pruned one
+                        if self.sparse_config is not None:
+                            level += int(self.sparse_config[handle_name])
+                        
                         os.makedirs(os.path.join(self.save_dir, handle_name), exist_ok=True)
                         # Map tensor to CPU before saving
                      
@@ -167,3 +193,5 @@ class ZipLMPruner:
 
     def _create_handle(self, layer):
         return FastOBCStruct(layer, rel_damp=self.rel_damp)
+
+

@@ -62,7 +62,7 @@ def get_wikitext2(
 
 
 # Load and process FineWeb-Edu v2 dataset
-def get_fineweb_edu(num_tokens: int, sequence_length: int, tokenizer: AutoTokenizer, train: bool = True):
+def get_fineweb_edu(num_tokens: int, sequence_length: int, tokenizer: AutoTokenizer, train: bool = True, seed: int =0):
     print_on_main("Loading FineWeb-Edu v2")
     dataset = load_dataset("HuggingFaceFW/fineweb-edu", "sample-10BT", split="train")
     tokens_to_load = num_tokens
@@ -70,7 +70,7 @@ def get_fineweb_edu(num_tokens: int, sequence_length: int, tokenizer: AutoTokeni
         dataset = dataset.select(range(dataset.num_rows//2))
     else:
         dataset = dataset.select(range(dataset.num_rows//2, dataset.num_rows))
-    dataset = dataset.shuffle(seed=0)
+    dataset = dataset.shuffle(seed=seed)
     data_iter = iter(dataset)
     data = []
     while tokens_to_load > 0:
@@ -129,6 +129,7 @@ def get_data(
     sequence_length: int,
     tokenizer: AutoTokenizer,
     train: bool = True,
+    seed: int = 0,
 ) -> List[torch.Tensor]:
     # For legacy reasons only fineweb_edu is loaded on a per token granularity
     if os.path.isfile(data_name_or_path):
@@ -139,7 +140,7 @@ def get_data(
     elif data_name_or_path == "c4":
         data = get_c4(num_tokens // sequence_length, sequence_length, tokenizer, train)
     elif data_name_or_path == "fineweb_edu":
-        data = get_fineweb_edu(num_tokens, sequence_length, tokenizer)
+        data = get_fineweb_edu(num_tokens, sequence_length, tokenizer, train=train, seed=seed)
     else:
         print(data_name_or_path)
         raise ValueError("Unknown dataset.")

@@ -383,3 +383,13 @@ def group_layers(model: nn.Module, layer_names: Sequence[str], group_rule: Optio
     for layer_name in layer_names:
         groups[group_key_fn(layer_name)].append(layer_name)
     return tuple(groups.values())
+
+def parse_block_size(block_size: Union[int, str], d_col: int):
+    if isinstance(block_size, str):
+        block_regex = "([0-9]*[.])?[0-9]+ d"
+        assert re.match(block_regex, block_size)
+        return int(float(block_size.split(" ")[0]) * d_col)
+    elif isinstance(block_size, int):
+        return block_size
+    else:
+        raise ValueError("Unsupported block_size format.")

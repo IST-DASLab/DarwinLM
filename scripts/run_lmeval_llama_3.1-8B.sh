@@ -1,7 +1,7 @@
 #!/bin/bash
 export TRANSFORMERS_CACHE=/nfs/scistore19/alistgrp/huggingface/hub
-export CUDA_VISIBLE_DEVICES=0,1
-MODEL="Llama-2-7B" #Llama-2-7B 
+# export CUDA_VISIBLE_DEVICES=6,7,8,9
+MODEL="Llama-3.1-8B" #Llama-2-7B 
 LMEVAL=${LMEVAL:-"SIMPLE_ZERO_SHOTS"}
 
 if [[ $MODEL == Llama-2-7B ]]; then
@@ -16,18 +16,17 @@ elif [[ $MODEL == Llama-3.1-8B ]]; then
     MODEL_ID=meta-llama/Llama-3.1-8B
 elif [[ $MODEL == Llama-3.2-1B ]]; then
     MODEL_ID=meta-llama/Llama-3.2-1B
-elif [[ $MODEL == Sheared-LLaMA-2.7B ]]; then
-    MODEL_ID=princeton-nlp/Sheared-LLaMA-2.7B
 else
     echo "Unknown model"
     exit 1
 fi
 
+# MODEL_ID=nvidia/Llama-3.1-Minitron-4B-Depth-Base
 port=23001
 output_path=/nfs/scistore19/alistgrp/stang/StructEvoPress/eval_results
 # ./z_scripts/z_run_lmeval.sh
 
-MODEL_LOADING_KWARGS=${MODEL_LOADING_KWARGS:-"--sparse_weights_path /nfs/scistore19/alistgrp/osieberl/structEvoPress/EvoPress/struct_database_2048/Llama-2-7b-hf --sparse_config_path /nfs/scistore19/alistgrp/stang/StructEvoPress/evo-ppl-configuration-5.0-without-finetune.txt"}
+MODEL_LOADING_KWARGS=${MODEL_LOADING_KWARGS:-"--sparse_weights_path /nfs/scistore19/alistgrp/stang/StructEvoPress/db/ziplm_llama3.1-8B_2048/Llama-3.1-8B --sparse_config_path /nfs/scistore19/alistgrp/stang/StructEvoPress/llama-3.1-8B-intermediate.txt"}
 
 
 if [[ $LMEVAL == "SIMPLE_ZERO_SHOTS" ]]; then
@@ -37,16 +36,23 @@ if [[ $LMEVAL == "SIMPLE_ZERO_SHOTS" ]]; then
     rm -rf ${output_path}/*
     accelerate launch --main_process_port ${port} lmeval.py \
         --model hf \
-        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16,trust_remote_code=True \
+        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16 \
         $MODEL_LOADING_KWARGS \
         --tasks mmlu \
-        --batch_size 2 \
+        --batch_size 4 \
         --num_fewshot 5 \
         --output_path ${output_path}/results_mmlu.json
+    # accelerate launch --main_process_port ${port} lmeval.py\
+    #     --model hf \
+    #     --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16 \
+    #     $MODEL_LOADING_KWARGS \
+    #     --tasks sciq \
+    #     --batch_size 8\
+    #     --output_path ${output_path}/results_sciq.json
 
     accelerate launch --main_process_port ${port} lmeval.py\
         --model hf \
-        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16,trust_remote_code=True \
+        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16 \
         $MODEL_LOADING_KWARGS \
         --tasks sciq,arc_easy,piqa,logiqa,boolq \
         --batch_size 8\
@@ -54,16 +60,16 @@ if [[ $LMEVAL == "SIMPLE_ZERO_SHOTS" ]]; then
     
     accelerate launch --main_process_port ${port} lmeval.py\
         --model hf \
-        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16,trust_remote_code=True \
+        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16 \
         $MODEL_LOADING_KWARGS \
         --tasks arc_challenge \
         --num_fewshot 25\
-        --batch_size 4\
+        --batch_size 8\
         --output_path ${output_path}/results_arc_challenge.json
     
     accelerate launch --main_process_port ${port} lmeval.py\
         --model hf \
-        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16,trust_remote_code=True \
+        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16 \
         $MODEL_LOADING_KWARGS \
         --tasks winogrande \
         --num_fewshot 5\
@@ -72,11 +78,11 @@ if [[ $LMEVAL == "SIMPLE_ZERO_SHOTS" ]]; then
     
     accelerate launch --main_process_port ${port} lmeval.py\
         --model hf \
-        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16,trust_remote_code=True \
+        --model_args pretrained=$MODEL_ID,low_cpu_mem_usage=True,dtype=float16 \
         $MODEL_LOADING_KWARGS \
         --tasks hellaswag \
         --num_fewshot 10\
-        --batch_size 4\
+        --batch_size 8\
         --output_path ${output_path}/results_hellaswag.json
 
 elif [[ $LMEVAL == "MMLU" ]]; then

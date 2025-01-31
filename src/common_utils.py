@@ -1,6 +1,7 @@
 import random
 import dataclasses
-from typing import Any, Sequence
+import yaml
+from typing import Any, Sequence, Dict
 
 import numpy as np
 import torch
@@ -39,3 +40,8 @@ def maybe_first_element(x):
     if isinstance(x, Sequence):
         x = x[0]
     return x
+
+def read_yaml_config(config_path: str) -> Dict[str, Any]:
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    return config

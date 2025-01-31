@@ -14,7 +14,8 @@ from transformers import AutoModelForCausalLM
 
 from lm_eval import evaluator, utils
 from lm_eval.api.registry import ALL_TASKS
-from lm_eval.tasks import include_path, initialize_tasks
+from lm_eval.tasks import TaskManager
+# from lm_eval.tasks import include_path, initialize_tasks
 from lm_eval.utils import make_table
 
 try:
@@ -24,6 +25,7 @@ try:
 except ModuleNotFoundError:
     has_wandb = False
 
+from utils import shrink, get_parameter_number, NoAttention, NoIntermediate
 
 
 def _handle_non_serializable(o):
@@ -187,6 +189,11 @@ def load_compressed_weights(
         with open(os.path.join(compressed_config_path), "r") as f:
             for line in f:
                 layer_name, level = line.split(":")
+                if isinstance(model.get_submodule(".".join(layer_name.split('.')[:4]).strip(" ")),
+                               NoAttention) or isinstance(model.get_submodule(".".join(layer_name.split('.')[:4]).strip(" ")),
+                               NoIntermediate):
+                               continue
+                
                 layer = model.get_submodule(layer_name.strip(" "))
                 orig_dtype = layer.weight.dtype
                 layer.weight.data = torch.load(
@@ -224,7 +231,47 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
         # Define new init
         def from_pretrained_overriden(*args, **kwargs):
             model = from_pretrained_orig(*args, **kwargs)
-            model = load_compressed_weights(model, sparse_weights_path, sparse_config_path, default_level)
+            print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
+            model = load_compressed_weights(model, sparse_weights_path, sparse_config_path)
+            shrink(model, is_transformers=True, kv_ignore=True)
+            # torch.distributed.barrier()
+            print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
+            # for i, layer in enumerate(model.model.layers):
+            #     if not isinstance(layer.self_attn, NoAttention):
+            #         # layer.self_attn.pruned_heads = set([1, 2])
+            #         print(f"Pruned head at layer {i} is {layer.self_attn.pruned_heads}")
+            # print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
+            state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/scripts/Qwen/checkpoints/ep0-ba250-rank0_hf/pytorch_model.bin", map_location="cpu")
+            # state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/srun_logs/evopress_search_llama3.1-8b-94b/ep0-ba2000-rank0_hf/pytorch_model.bin", map_location="cpu")
+            # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+            #     state, prefix='model.')
+            model.load_state_dict(state)
+            print("Finetuned weights are loaded!")
+            
+            # model = load_compressed_weights(model, "/nfs/scistore19/alistgrp/stang/StructEvoPress/db/struct_gradual_database_from_level-5/Llama-2-7b-hf", 
+            #                                 "/nfs/scistore19/alistgrp/stang/StructEvoPress/evo-kl-configuration-5.0-finetune-multistep-500step.txt", 
+            #                                 default_level)
+            # print("Before shrinking")
+            # for i, layer in enumerate(model.model.layers):
+            #     if not isinstance(layer.self_attn, NoAttention):
+            #         layer.self_attn.pruned_heads = set()
+            #         # print(f"Pruned head at layer {i} is {layer.self_attn.pruned_heads}")
+            # shrink(model, is_transformers=True)
+            # # print("After shrinking")
+            # # for i, layer in enumerate(model.model.layers):
+            # #     if not isinstance(layer.self_attn, NoAttention):
+            # #         print(f"Pruned head at layer {i} is {layer.self_attn.pruned_heads}")
+            # print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
+            # state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/srun_logs/evopress_search_llama2_with_multistep-finetune_level-6-20B/ep0-ba3000-rank0_hf/pytorch_model.bin", map_location="cpu")
+            # # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+            # #     state, prefix='model.')
+            # model.load_state_dict(state)
+            # print("Finetuned weights are loaded!")
+            # state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/scripts/shearedllama_2.7B_fineweb_20B/ep0-ba2500-rank0_hf/pytorch_model.bin", map_location="cpu")
+            # # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+            # #     state, prefix='model.')
+            # model.load_state_dict(state)
+            # print("Finetuned weights are loaded!")
             return model
 
 
@@ -235,8 +282,7 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
     eval_logger.setLevel(getattr(logging, f"{args.verbosity}"))
     eval_logger.info(f"Verbosity set to {args.verbosity}")
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-    initialize_tasks(args.verbosity)
+    # initialize_tasks(args.verbosity)
 
     if args.log_wandb:
         assert has_wandb, "`wandb` not installed, try pip install `wandb`"
@@ -246,14 +292,15 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
         eval_logger.warning(
             " --limit SHOULD ONLY BE USED FOR TESTING." "REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT."
         )
-    if args.include_path is not None:
-        eval_logger.info(f"Including path: {args.include_path}")
-        include_path(args.include_path)
+    # if args.include_path is not None:
+    #     eval_logger.info(f"Including path: {args.include_path}")
+    #     include_path(args.include_path)
+    task_manager = TaskManager(args.verbosity, include_path=args.include_path)
 
     if args.tasks is None:
         task_names = ALL_TASKS
     elif args.tasks == "list":
-        eval_logger.info("Available Tasks:\n - {}".format("\n - ".join(sorted(ALL_TASKS))))
+        eval_logger.info("Available Tasks:\n - {}".format("\n - ".join(sorted(task_manager.all_tasks))))
         sys.exit()
     else:
         if os.path.isdir(args.tasks):
@@ -266,7 +313,7 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
                 task_names.append(config)
         else:
             tasks_list = args.tasks.split(",")
-            task_names = utils.pattern_match(tasks_list, ALL_TASKS)
+            task_names = task_manager.match_tasks(tasks_list)
             for task in [task for task in tasks_list if task not in task_names]:
                 if os.path.isfile(task):
                     config = utils.load_yaml_config(task)
@@ -315,7 +362,8 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
         device=args.device,
         use_cache=args.use_cache,
         limit=args.limit,
-        decontamination_ngrams_path=args.decontamination_ngrams_path,
+        task_manager=task_manager,
+        # decontamination_ngrams_path=args.decontamination_ngrams_path,
         check_integrity=args.check_integrity,
         write_out=args.write_out,
         log_samples=args.log_samples,

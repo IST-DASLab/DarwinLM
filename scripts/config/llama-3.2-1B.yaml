@@ -1,0 +1,3 @@
+group_size:
+    - ['.*blocks.*o_proj$', 64]
+    - ['.*blocks.*down_proj$', 1]
