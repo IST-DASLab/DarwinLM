@@ -167,9 +167,13 @@ def parse_eval_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--kv_ignore",
-        type=bool,
-        default=False,
+        action="store_true",
         help="Ignore the k,v matrices during pruning",
+    )
+    parser.add_argument(
+        "--model_shrink",
+        action="store_true",
+        help="Shrink the model or not",
     )
     parser.add_argument(
         "--sparse_default_level",
@@ -234,14 +238,17 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
         sparse_config_path = args.sparse_config_path
         kv_ignore = args.kv_ignore
         default_level = args.sparse_default_level
+        model_shrink = args.model_shrink
 
         # Define new init
         def from_pretrained_overriden(*args, **kwargs):
             model = from_pretrained_orig(*args, **kwargs)
             
             model = load_compressed_weights(model, sparse_weights_path, sparse_config_path)
-            print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
-            shrink(model, is_transformers=True, kv_ignore=kv_ignore)
+            if model_shrink:
+                shrink(model, is_transformers=True, kv_ignore=kv_ignore)
+                print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
+
             return model
 
 

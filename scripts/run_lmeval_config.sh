@@ -6,15 +6,25 @@ MODEL_ID="meta-llama/Llama-2-7b-hf" #"Qwen/Qwen2.5-14B-Instruct" "meta-llama/Lla
 LMEVAL=${LMEVAL:-"SIMPLE_ZERO_SHOTS"}
 
 port=23001
-#Path to save the evaluation results
+# Path to save the evaluation results
 output_path=/nfs/scistore19/alistgrp/stang/StructEvoPress/eval_results
 
 database_path=/nfs/scistore19/alistgrp/osieberl/structEvoPress/EvoPress/struct_database_2048/Llama-2-7b-hf
 sparse_config_path=/nfs/scistore19/alistgrp/stang/StructEvoPress/evo-kl-configuration-5.0-finetune-multistep.txt
-kv_ignore=false
+# If you need the real-time speedup, you should install the transformers packages from https://github.com/Tangshengku/transformers/tree/llama3.1
+# After that, set model_shrink=True
+model_shrink=false
 
 MODEL_LOADING_KWARGS=${MODEL_LOADING_KWARGS:-"--sparse_weights_path ${database_path} --sparse_config_path ${sparse_config_path}"}
 
+if [[ $model_shrink == true ]]; then
+    echo "The model will be shrunk."
+    MODEL_LOADING_KWARGS=${MODEL_LOADING_KWARGS:-"--model_shrink"}
+    if [[ $MODEL_ID !=  "meta-llama/Llama-2-7b-hf" ]]; then
+        echo "KV pruning will be ignored"
+        MODEL_LOADING_KWARGS=${MODEL_LOADING_KWARGS:-"--kv_ignore"}
+    fi
+fi
 
 if [[ $LMEVAL == "SIMPLE_ZERO_SHOTS" ]]; then
     echo "Running 0-shots"
