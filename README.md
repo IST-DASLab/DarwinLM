@@ -2,7 +2,7 @@
 
 🌟 [ArXiv Preprint](https://arxiv.org/pdf/2502.07780)
 
-This repository contains the implementation of evolutionary structured pruning for language models, as introduced in our paper. The approach optimizes model efficiency while maintaining strong performance.
+This repository contains the implementation of evolutionary structured pruning for language models, as introduced in our paper. DarwinLM builds upon an evolutionary search process, generating multiple offspring models in each generation through mutation, and selecting the fittest for survival.
 
 We provide six model variants on huggingface:
 - Models after pruning and searching: [**2.7B-Pruned Model**](https://huggingface.co/Shengkun/DarwinLM-2.7B-Pruned), [**4.6B-Pruned Model**](https://huggingface.co/Shengkun/DarwinLM-4.6B-Pruned), [**8.4B-Pruned Model**](https://huggingface.co/Shengkun/DarwinLM-8.4B-Pruned)
