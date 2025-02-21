@@ -23,10 +23,6 @@ from src.common_utils import fix_seed
 from src.metrics import compute_perplexity, compute_kl_div, compute_sparse_kl_div
 from src.model_utils import layer_order_fn, group_layers
 
-from struct_prune import load_sparse_config, load_compressed_finetuned_weights, load_compressed_weights
-from utils import shrink
-
-
 def load_layers(
     model: AutoModelForCausalLM,
     grouped_layer_names: Tuple[Sequence[str]],
@@ -149,8 +145,6 @@ def selection(
     # Keep only best
     best_ids = np.argsort(fitnesses)[:num_survive]
     best_fitness_before = None
-    print("all finetune fitnesses are:", fitnesses)
-    print("saved id is:", best_ids)
 
     if len(fitnesses_before) > 0:
         best_fitness_before = [fitnesses_before[i] for i in best_ids]
@@ -391,48 +385,8 @@ def main():
 
     # Initialization
     parent = None
-    ori_parent = None
-    if args.gradual_target_level is not None:
-        if args.sparse_config_path is not None:
-            config = load_sparse_config(args.sparse_config_path)
-            parent = [[], []]
-            for key, val in config.items():
-                if key in grouped_layer_names[0]:
-                    parent[0].append(int(val))
-                else:
-                    parent[1].append(int(val))
-            ori_parent = copy.deepcopy(parent)
-            print("original parent:", ori_parent)
-        resdual = (int(args.gradual_target_level) - int(args.target_level)) * len(grouped_layer_names[0])
-        # random add the resdual value to new parent
-        for i in range(resdual):
-            while True:
-                idx = random.randint(0, len(parent[0]) - 1)
-                if parent[0][idx] + 1 > 9:
-                    continue
-                else:
-                    parent[0][idx] += 1
-                    break
-            while True:
-                idx = random.randint(0, len(parent[1]) - 1)
-                if parent[1][idx] + 1 > 9:
-                    continue
-                else:
-                    parent[1][idx] += 1
-                    break
-        print("New parent:", parent)
-    else:
-        parent = [[int(args.target_level) for _ in names] for names in grouped_layer_names]
+    parent = [[int(args.target_level) for _ in names] for names in grouped_layer_names]
     train_fitness = float("inf")
-#     parent = [[5, 9, 9, 8, 6, 5, 6, 7, 4, 5, 7, 6, 5, 5, 5, 3, 5, 5, 7, 5, 4, 7, 6, 5, 7, 4, 3, 5, 4, 5, 7, 4, 4, 5, 3, 3, 3, 5, 3, 5, 3, 5, 4, 5, 4, 4, 1, 5],
-# [3, 5, 6, 7, 5, 7, 7, 5, 7, 4, 5, 5, 8, 3, 9, 5, 5, 1, 5, 6, 4, 4, 5, 4, 7, 2, 6, 5, 6, 1, 4, 5, 3, 3, 5, 6, 6, 4, 6, 10, 3, 3, 5, 5, 3, 6, 5, 6]]
-
-    if args.sparse_config_path is not None:
-        model = load_compressed_finetuned_weights(model, args.sparse_weights_path, 
-                                                args.sparse_finetuned_weight_path, args.sparse_config_path)
-        args.sparse_weights_path = args.gradual_database
-    if ori_parent is not None:
-        model.state = copy.deepcopy(ori_parent)
     
     log_dict = {}
     for generation in range(args.generations):
@@ -499,26 +453,12 @@ def main():
             if offspring in offspring_list or offspring in [parent]:  # Avoid duplicates
                 continue
             offspring_list.append(offspring)
-        training_data_ = None
-        kl_full_finetune = []
-        for offspring in offspring_list:
-            model_copy = None
-            model_copy = copy.deepcopy(model)
-            load_layers(model_copy, grouped_layer_names, offspring, args.sparse_weights_path)
-            fitness = compute_fitness(model_copy, calibration_data, args.fitness_fn, target_logits,
-                                        finetune_data_list=training_data)
-            # if finetune_data_list is not None:
-            #     print("after fintune fitness is: ", fitness)
-            kl_full_finetune.append(fitness)
-        print(kl_full_finetune)
-
 
         for i, (num_survive, num_tokens, num_train_tokens) in enumerate(zip(args.survivors_per_selection, args.tokens_per_selection, args.training_tokens_per_selection)):
-            # if num_survive == args.survivors_per_selection[-1]:
-                # if parent not in offspring_list:  # Elitist EA
-                #     offspring_list.append(parent)
-            # if i == len(args.survivors_per_selection) - 1:
-            #     training_data_ = training_data
+            if num_survive == args.survivors_per_selection[-1]:
+                if parent not in offspring_list:  # Elitist EA
+                    offspring_list.append(parent)
+
             training_token_used = 0
             minibatch_ids = []
             training_minibatch = []
@@ -529,7 +469,7 @@ def main():
                 minibatch_ids.append(minibatch_id)
                 training_minibatch.append(training_data[minibatch_id])
                 training_token_used += training_data[minibatch_id].shape[1]
-            # training_minibatch=None
+
             offspring_list, train_fitnesses, train_fitnesses_before_finetune = selection(
                 model=model,
                 grouped_layer_names=grouped_layer_names,

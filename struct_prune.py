@@ -14,7 +14,6 @@ from src.data_utils import get_data
 from src.struct_pruner import ZipLMPruner
 from src.struct_cap import SparseStructCAP
 from src.common_utils import read_yaml_config
-from utils import shrink, get_parameter_number
 
 def load_compressed_weights(
     model: AutoModelForCausalLM,
@@ -44,21 +43,6 @@ def load_compressed_weights(
                 os.path.join(compressed_weights_path, layer_name, f"{default_level}.pth"),
                 map_location=layer.weight.device,
             ).to(orig_dtype)
-    return model
-
-def load_compressed_finetuned_weights(
-    model: AutoModelForCausalLM,
-    compressed_weights_path: Union[str, os.PathLike],
-    finetuned_weight_path: Union[str, os.PathLike],
-    compressed_config_path: Optional[str] = None,
-    default_level: int = 0,
-):
-    model = load_compressed_weights(model, compressed_weights_path, compressed_config_path)
-    shrink(model, is_transformers=True)
-    print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
-    state = torch.load(finetuned_weight_path, map_location="cpu")
-    model.load_state_dict(state)
-    print("Finetuned weights are loaded!")
     return model
 
 def load_sparse_config(compressed_config_path):
@@ -197,11 +181,6 @@ def main():
         attn_implementation=args.attn_implementation,
     )
     config_dict = None
-    if args.sparse_finetuned_weight_path is not None:
-        config_dict = load_sparse_config(args.sparse_config_path)
-        model = load_compressed_finetuned_weights(model, args.sparse_weight_path,
-                                                  args.sparse_finetuned_weight_path,
-                                                  args.sparse_config_path)
 
     if not args.cpu_offload_modules:
         model = model.to(device)

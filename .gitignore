@@ -5,3 +5,6 @@ evo*
 llama-3.1*
 qwen-14B*
 wandb/
+*.pt
+*eval_results
+level2sparsity.py

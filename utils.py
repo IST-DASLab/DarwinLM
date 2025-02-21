@@ -48,13 +48,6 @@ def shrink(model, update_mask=False, is_transformers=False, kv_ignore=False):
                 mask = torch.all(
                     weight.t().reshape((-1, weight.shape[0] * layer.self_attn.head_dim)) == 0, 1
                 )
-                # if print_:
-                    
-                #     mask_ = mask
-                    # layer.self_attn.o_proj.weight.data = layer.self_attn.o_proj.weight * mask_.unsqueeze(0)
-                    # layer.self_attn.q_proj.weight.data = layer.self_attn.q_proj.weight * mask
-                    # layer.self_attn.v_proj.weight.data = layer.self_attn.v_proj.weight * mask
-                    # layer.self_attn.k_proj.weight.data = layer.self_attn.k_proj.weight * mask
                 if update_mask:
                     mask_ = (~mask.unsqueeze(1)) * torch.ones_like(weight.t(), device=mask.device).reshape(
                             (-1, weight.shape[0] * layer.attn.head_size)) 
@@ -78,14 +71,10 @@ def shrink(model, update_mask=False, is_transformers=False, kv_ignore=False):
                     idx = []
                     count = 0
                     for i in range(mask.numel()):
-                        # pruned_heads = layer.self_attn.pruned_heads
-                        # while count in pruned_heads:
-                        #     count += 1
                         if mask[i]:
                             idx.append(count)
                         count += 1
                     if torch.any(mask):
-                        # idx = torch.nonzero(~mask).squeeze(-1).tolist()
                         layer.self_attn.prune_heads(idx, kv_ignore=kv_ignore)
                     
         if not isinstance(layer.mlp.down_proj, NoOutput):

@@ -62,7 +62,7 @@ def compute_kl_div(model, data, target_logits, batch_size: int = 1):
         
       
         #Squeeze on GPU 
-        # torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
         for i in range(0, shift_logits.shape[1], 1024):
             j = min(i + 1024, shift_logits.shape[1])
             shift_logits_batch = shift_logits[:, i:j, :]
@@ -80,7 +80,7 @@ def compute_kl_div(model, data, target_logits, batch_size: int = 1):
             # Update number of processed tokens
             tokens_processed += shift_targets_batch.numel()
             del shift_logits_batch, shift_targets_batch, loss_batch
-            # torch.cuda.empty_cache()      
+            torch.cuda.empty_cache()      
         
  
     return kl_div_running.item()

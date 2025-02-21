@@ -166,6 +166,12 @@ def parse_eval_args() -> argparse.Namespace:
         help="Path to sparsification config",
     )
     parser.add_argument(
+        "--kv_ignore",
+        type=bool,
+        default=False,
+        help="Ignore the k,v matrices during pruning",
+    )
+    parser.add_argument(
         "--sparse_default_level",
         type=int,
         default=0,
@@ -226,52 +232,16 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
     if args.sparse_weights_path:
         sparse_weights_path = args.sparse_weights_path
         sparse_config_path = args.sparse_config_path
+        kv_ignore = args.kv_ignore
         default_level = args.sparse_default_level
 
         # Define new init
         def from_pretrained_overriden(*args, **kwargs):
             model = from_pretrained_orig(*args, **kwargs)
-            print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
-            model = load_compressed_weights(model, sparse_weights_path, sparse_config_path)
-            shrink(model, is_transformers=True, kv_ignore=True)
-            # torch.distributed.barrier()
-            print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
-            # for i, layer in enumerate(model.model.layers):
-            #     if not isinstance(layer.self_attn, NoAttention):
-            #         # layer.self_attn.pruned_heads = set([1, 2])
-            #         print(f"Pruned head at layer {i} is {layer.self_attn.pruned_heads}")
-            # print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
-            state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/scripts/Qwen/checkpoints/ep0-ba250-rank0_hf/pytorch_model.bin", map_location="cpu")
-            # state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/srun_logs/evopress_search_llama3.1-8b-94b/ep0-ba2000-rank0_hf/pytorch_model.bin", map_location="cpu")
-            # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
-            #     state, prefix='model.')
-            model.load_state_dict(state)
-            print("Finetuned weights are loaded!")
             
-            # model = load_compressed_weights(model, "/nfs/scistore19/alistgrp/stang/StructEvoPress/db/struct_gradual_database_from_level-5/Llama-2-7b-hf", 
-            #                                 "/nfs/scistore19/alistgrp/stang/StructEvoPress/evo-kl-configuration-5.0-finetune-multistep-500step.txt", 
-            #                                 default_level)
-            # print("Before shrinking")
-            # for i, layer in enumerate(model.model.layers):
-            #     if not isinstance(layer.self_attn, NoAttention):
-            #         layer.self_attn.pruned_heads = set()
-            #         # print(f"Pruned head at layer {i} is {layer.self_attn.pruned_heads}")
-            # shrink(model, is_transformers=True)
-            # # print("After shrinking")
-            # # for i, layer in enumerate(model.model.layers):
-            # #     if not isinstance(layer.self_attn, NoAttention):
-            # #         print(f"Pruned head at layer {i} is {layer.self_attn.pruned_heads}")
-            # print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
-            # state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/srun_logs/evopress_search_llama2_with_multistep-finetune_level-6-20B/ep0-ba3000-rank0_hf/pytorch_model.bin", map_location="cpu")
-            # # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
-            # #     state, prefix='model.')
-            # model.load_state_dict(state)
-            # print("Finetuned weights are loaded!")
-            # state = torch.load("/nfs/scistore19/alistgrp/stang/llm-foundry/scripts/shearedllama_2.7B_fineweb_20B/ep0-ba2500-rank0_hf/pytorch_model.bin", map_location="cpu")
-            # # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
-            # #     state, prefix='model.')
-            # model.load_state_dict(state)
-            # print("Finetuned weights are loaded!")
+            model = load_compressed_weights(model, sparse_weights_path, sparse_config_path)
+            print("Model shrinks, the remaining parameters are: ", get_parameter_number(model))
+            shrink(model, is_transformers=True, kv_ignore=kv_ignore)
             return model
 
 
